@@ -1,0 +1,742 @@
+<title>NSE EMA18 Screener</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a scanning board. Quarter clock up top, counts that double as tabs, one list, stock detail beside it (wide) or over it (narrow). */
+:root {
+  --bg: #f4f5f8; --panel: #ffffff; --ink: #151a2b; --muted: #5d6479; --line: #dde0e9; --soft: #eceef4;
+  --accent: #3a47b8; --accent-soft: #e6e8f8;
+  --bull: #11784b; --bull-soft: #e2f3ea; --bear: #b8352e; --bear-soft: #f9e5e3;
+  --prov: #a5650f; --prov-soft: #fbf0dd; --banner: #fff6e6; --banner-line: #efd9ad;
+  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f121b; --panel: #171b27; --ink: #e6e8f0; --muted: #9aa1b8; --line: #2a3043; --soft: #20253a;
+  --accent: #96a1ff; --accent-soft: #252b4d;
+  --bull: #4cc68c; --bull-soft: #15301f; --bear: #ff8177; --bear-soft: #3a1c1a;
+  --prov: #f0b456; --prov-soft: #36280f; --banner: #2c2410; --banner-line: #574617; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f121b; --panel: #171b27; --ink: #e6e8f0; --muted: #9aa1b8; --line: #2a3043; --soft: #20253a;
+  --accent: #96a1ff; --accent-soft: #252b4d;
+  --bull: #4cc68c; --bull-soft: #15301f; --bear: #ff8177; --bear-soft: #3a1c1a;
+  --prov: #f0b456; --prov-soft: #36280f; --banner: #2c2410; --banner-line: #574617; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.brand h1 { font: 800 clamp(26px, 4vw, 38px)/1.05 var(--f-display); font-stretch: 80%; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.fresh { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 13px; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--bull); background: var(--bull-soft); }
+.pill.stale { color: var(--prov); background: var(--prov-soft); }
+.pill.sample { color: var(--prov); background: var(--prov-soft); }
+
+.banner { margin-top: 16px; padding: 10px 14px; border: 1px solid var(--banner-line); background: var(--banner); border-radius: var(--r); font-size: 14px; }
+.banner b { font-weight: 600; }
+
+/* quarter clock */
+.clock { margin-top: 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 20px; align-items: end; }
+.clock-head { font: 700 15px/1.2 var(--f-display); font-stretch: 85%; letter-spacing: .04em; text-transform: uppercase; }
+.clock-head small { font: 500 13px var(--f-body); letter-spacing: 0; text-transform: none; color: var(--muted); margin-left: 8px; }
+.clock-left { text-align: right; font-size: 13px; color: var(--muted); }
+.clock-left b { font: 600 20px var(--f-num); color: var(--prov); display: block; line-height: 1.1; }
+.track { grid-column: 1 / -1; position: relative; display: grid; grid-template-columns: repeat(3, 1fr); height: 34px; border-radius: 8px; overflow: hidden; background: var(--soft); }
+.track .mo { border-right: 1px solid var(--line); font: 500 12px var(--f-num); color: var(--muted); padding: 8px 10px; position: relative; z-index: 1; }
+.track .mo:last-child { border-right: 0; }
+.track .fill { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(135deg, var(--prov-soft) 0 8px, transparent 8px 14px), var(--prov-soft); border-right: 2px solid var(--prov); }
+.clock-foot { grid-column: 1 / -1; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.clock-foot b { color: var(--ink); font-weight: 600; }
+
+/* counts = tabs */
+.counts { margin-top: 22px; display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 10px; }
+.count { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-width: 0; transition: border-color .15s, box-shadow .15s; }
+.count:hover { border-color: var(--accent); }
+.count[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.count .lab { font: 600 12px/1.2 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.count .big { font: 700 28px/1.1 var(--f-display); font-stretch: 85%; }
+.count .sub { font-size: 12.5px; color: var(--muted); }
+.count .sub .up { color: var(--bull); font-weight: 600; } .count .sub .dn { color: var(--bear); font-weight: 600; }
+
+/* board */
+.board { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (min-width: 1280px) { .board.has-detail { grid-template-columns: minmax(0, 1fr) 400px; } }
+.list { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.list-head h2 { margin: 0; font: 700 18px/1.25 var(--f-display); font-stretch: 85%; text-wrap: balance; }
+.list-head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); max-width: 62ch; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { background: transparent; border: 0; padding: 6px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.tools input, .tools select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.tools input { width: 150px; }
+
+.list-head p.wk-sum { margin-top: 4px; color: var(--ink); }
+.list-head p.funnel { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; color: var(--muted); }
+.list-head p.funnel b { color: var(--ink); }
+.list-head p.funnel i { font-style: normal; color: var(--muted); }
+.rows { display: flex; flex-direction: column; }
+/* columns: stock, signal, close, from EMA, weekly, key level, sparkline */
+.list { --cols: minmax(104px, 1.1fr) 104px 116px 112px 118px minmax(124px, 1fr) 120px; }
+.board.has-detail .list { --cols: minmax(100px, 1.1fr) 100px 112px 108px 116px minmax(120px, 1fr); }
+.board.no-weekly .list { --cols: minmax(110px, 1.2fr) 108px 118px 116px minmax(128px, 1fr) 120px; }
+.board.no-weekly.has-detail .list { --cols: minmax(110px, 1.2fr) 108px 118px 116px minmax(128px, 1fr); }
+.board.has-detail .c-spark, .board.has-detail .h-spark, .board.no-weekly .c-wk, .board.no-weekly .h-wk { display: none; }
+.row, .row-h { display: grid; grid-template-columns: var(--cols); gap: 12px; align-items: center; padding: 10px 16px; }
+.wk { display: block; line-height: 1.3; }
+.wk b { font-size: 13px; font-weight: 600; }
+.wk.yes b { color: var(--accent); }
+.wk.no b { color: var(--muted); }
+.wk small { display: block; font-size: 12px; color: var(--muted); }
+.wk small .new { color: var(--prov); font-weight: 600; }
+.wk.none { font-size: 12px; color: var(--muted); }
+.chart-seg { margin: 4px 0 8px; }
+.tv { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.tv:hover { border-color: var(--accent); background: var(--accent-soft); }
+.verdict .wv { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.px { font-size: 13.5px; line-height: 1.35; }
+.px small { display: block; font-size: 12px; color: var(--muted); }
+.row-h { font: 600 11.5px var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-block: 8px; }
+.row-h .r, .row .r { text-align: right; }
+.row { width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--soft); }
+.row[aria-current="true"] { background: var(--accent-soft); }
+.sym { min-width: 0; }
+.sym b { font: 600 15px var(--f-num); letter-spacing: .01em; display: block; }
+.sym span { font-size: 12.5px; color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.level { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.level .num { color: var(--ink); font-size: 13px; }
+
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; border: 1.5px solid transparent; }
+.chip.c-bullish { background: var(--bull-soft); color: var(--bull); }
+.chip.c-bearish { background: var(--bear-soft); color: var(--bear); }
+.chip.p-bullish, .chip.p-bearish { background: var(--prov-soft); border: 1.5px dashed var(--prov); }
+.chip.p-bullish { color: var(--bull); } .chip.p-bearish { color: var(--bear); }
+.chip.gone { background: var(--soft); color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.chip.watch { background: transparent; border: 1.5px solid var(--line); color: var(--muted); }
+.chip.setup { background: var(--bull); color: var(--panel); }
+
+.dist { display: grid; grid-template-columns: 1fr 46px; gap: 8px; align-items: center; }
+.dbar { position: relative; height: 8px; background: var(--soft); border-radius: 4px; }
+.dbar::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: var(--muted); opacity: .6; }
+.dbar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.dbar i.above { left: 50%; background: var(--bull); } .dbar i.below { right: 50%; background: var(--bear); }
+.dist .num { font-size: 12.5px; text-align: right; }
+
+svg .ln-c { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+svg .ln-e { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 4 3; }
+svg .pt-done { fill: var(--ink); } svg .pt-form { fill: var(--panel); stroke: var(--prov); stroke-width: 2; }
+svg .xmark { fill: var(--accent-soft); }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+svg .lvl { stroke: var(--prov); stroke-width: 1.3; stroke-dasharray: 2 3; }
+svg text { fill: var(--muted); font: 11px var(--f-num); }
+svg text.lvl-t { fill: var(--prov); }
+
+.empty, .loading { padding: 36px 20px; text-align: center; color: var(--muted); }
+.empty b { color: var(--ink); display: block; font-weight: 600; margin-bottom: 4px; }
+
+/* detail */
+.detail { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.detail-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.detail-h h3 { margin: 0; font: 700 24px/1.1 var(--f-num); letter-spacing: -.01em; }
+.detail-h p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.x { background: var(--soft); border: 0; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1; flex: none; }
+.verdict { margin: 12px 0; padding: 10px 12px; border-radius: 8px; background: var(--soft); font-size: 14px; }
+.verdict b { font-weight: 600; }
+.chart { width: 100%; height: auto; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
+.legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--ink); vertical-align: middle; margin-right: 5px; }
+.legend i.e { border-top: 2px dashed var(--accent); } .legend i.f { width: 9px; height: 9px; border: 2px solid var(--prov); border-radius: 50%; }
+table.qt { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.qt th { text-align: right; font: 600 11px var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 4px; border-bottom: 1px solid var(--line); }
+table.qt th:first-child, table.qt td:first-child { text-align: left; }
+table.qt td { text-align: right; padding: 5px 4px; border-bottom: 1px solid var(--soft); font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+table.qt td.up { color: var(--bull); } table.qt td.dn { color: var(--bear); }
+table.qt tr.form td { color: var(--prov); }
+
+/* method */
+.method { margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 28px; font-size: 13.5px; color: var(--muted); }
+.method h4 { margin: 0 0 4px; font: 700 13px var(--f-display); font-stretch: 85%; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.method p, .method dl { margin: 0; max-width: 62ch; }
+.method dt { color: var(--ink); font-weight: 600; display: inline; }
+.method dd { display: inline; margin: 0; } .method dd::after { content: ""; display: block; margin-bottom: 4px; }
+
+@media (max-width: 1279px) {
+  .detail { position: fixed; z-index: 20; inset: auto 0 0 0; max-height: 86vh; overflow-y: auto; border-radius: 16px 16px 0 0; border-width: 1px 0 0;
+    padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    box-shadow: 0 -12px 40px rgba(10, 14, 30, .25); }
+  .scrim { position: fixed; inset: 0; z-index: 19; background: rgba(10, 14, 30, .35); }
+}
+@media (max-width: 980px) {
+  .counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .counts.odd .count:last-child { grid-column: 1 / -1; }
+  .sym span { white-space: normal; }
+  .row-h { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "sym chip" "dist px" "wk wk" "level spark"; gap: 6px 14px; padding: 12px 16px; }
+  .row .c-sym { grid-area: sym; } .row .c-chip { grid-area: chip; justify-self: end; }
+  .row .c-px { grid-area: px; }
+  .row .c-wk { grid-area: wk; }
+  .row .wk { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+  .row .c-dist { grid-area: dist; } .row .c-level { grid-area: level; } .row .c-spark { grid-area: spark; justify-self: end; }
+  .fresh { align-items: flex-start; }
+  .count .sub { white-space: normal; }
+  .dist { grid-template-columns: 1fr auto; }
+  .tools input { width: 120px; }
+}
+@media (max-width: 420px) { .clock { grid-template-columns: 1fr; } .clock-left { text-align: left; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>NSE <span>EMA18</span> Screener</h1>
+      <p>Quarterly closes crossing their 18-quarter EMA, checked against the 18-week and 18-day EMAs after every NSE session.</p>
+    </div>
+    <div class="fresh" id="fresh"></div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="clock" id="clock" aria-label="Forming quarter"></section>
+
+  <nav class="counts" id="counts" role="tablist" aria-label="Signal groups"></nav>
+
+  <div class="board" id="board">
+    <section class="list" id="list" aria-live="polite">
+      <div class="loading">Loading the latest scan…</div>
+    </section>
+    <div class="scrim" id="scrim" hidden></div>
+    <aside class="detail" id="detail" hidden aria-label="Stock detail"></aside>
+  </div>
+
+  <footer class="method" id="method">
+    <div>
+      <h4>The signal</h4>
+      <p>Each stock's quarterly close (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec) against its 18-quarter EMA, seeded with an 18-quarter average. Bullish: last quarter closed at or below its EMA and this one closes above. Bearish is the mirror. Stocks need 19 quarters of history.</p>
+    </div>
+    <div>
+      <h4>Reading the states</h4>
+      <dl>
+        <dt>Confirmed</dt> <dd>the quarter has closed with the cross. Final.</dd>
+        <dt>Provisional</dt> <dd>the forming quarter crosses at today's price. It can still change before the quarter ends.</dd>
+        <dt>Repainted</dt> <dd>a provisional cross that today's price undid. Failed: one the quarter close undid.</dd>
+        <dt>Near</dt> <dd>within a few percent of the EMA on the side that could cross.</dd>
+      </dl>
+    </div>
+    <div>
+      <h4>Weekly check</h4>
+      <p>Every listed stock is also compared with its 18-week EMA at the latest close. Agrees means the weekly close is on the same side as the quarterly signal: above for bullish, below for bearish. The current week's candle keeps changing until Friday's close. Each stock's detail also has a daily chart against its 18-day EMA, and a link to the same chart in TradingView.</p>
+    </div>
+    <div id="strategy-note" hidden>
+      <h4>Buy setups and exits</h4>
+      <p id="strategy-copy"></p>
+    </div>
+    <div>
+      <h4>Data</h4>
+      <p>Daily closes from the NSE bhavcopy; split-adjusted history from Yahoo Finance. Corporate actions trigger a history reload before a stock is scanned. These are screener signals, not investment advice.</p>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var S = { data: null, tab: "confirmed", dir: "all", wk: "any", q: "", sort: "dist", sel: null, chart: "q", hasW: false, hasD: false };
+  var TABS = ["setups", "confirmed", "provisional", "repainted", "near", "earlier"];
+  var inr = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function rs(v) { return v == null ? "–" : "₹" + inr.format(v); }
+  function pctf(v) { return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1) + "%"; }
+  // weekly trend on the same side as the (quarterly) signal direction?
+  function agrees(dir, w) { if (!w || (dir !== "bullish" && dir !== "bearish")) return null; return (w.side === "above") === (dir === "bullish"); }
+  function weeksAgo(n) { return n === 0 ? "this week" : n === 1 ? "1 week ago" : n + " weeks ago"; }
+  // Friday of an ISO week key like 2026-W44
+  function isoFriday(key) {
+    var y = +key.slice(0, 4), w = +key.slice(6), jan4 = new Date(Date.UTC(y, 0, 4));
+    var monday1 = new Date(jan4.getTime() - ((jan4.getUTCDay() || 7) - 1) * 86400000);
+    return new Date(monday1.getTime() + ((w - 1) * 7 + 4) * 86400000);
+  }
+  function d8(s) { var p = s.split("-"); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
+  function fdate(s, year) { if (!s) return ""; var d = d8(s.slice(0, 10)); return d.getUTCDate() + " " + MON[d.getUTCMonth()] + (year ? " " + d.getUTCFullYear() : ""); }
+  function qy(q) { return +q.slice(0, 4); } function qn(q) { return +q.slice(-1); }
+  function qLabel(q) { return "Q" + qn(q) + " " + qy(q); }
+  function qShort(q) { return "Q" + qn(q) + " '" + String(qy(q)).slice(2); }
+  function qStart(q) { return new Date(Date.UTC(qy(q), (qn(q) - 1) * 3, 1)); }
+  function qEnd(q) { return new Date(Date.UTC(qy(q), qn(q) * 3, 0)); }
+  function qMonths(q) { var m = (qn(q) - 1) * 3; return [MON[m], MON[m + 1], MON[m + 2]]; }
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function istToday() { try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date()); } catch (e) { return iso(new Date()); } }
+  var DAY = 86400000;
+
+  // ---------- data groups
+  function groups() {
+    var d = S.data, fq = d.forming_quarter, cq = d.completed_quarter, sig = d.signals || [];
+    return {
+      setups: (d.setups || []).map(function (s) { return Object.assign({ status: "setup", direction: "bullish" }, s); }),
+      confirmed: sig.filter(function (s) { return s.quarter === cq && s.status === "confirmed"; }),
+      provisional: sig.filter(function (s) { return s.quarter === fq && s.status === "provisional"; }),
+      repainted: sig.filter(function (s) { return (s.quarter === fq && s.status === "repainted") || (s.quarter === cq && s.status === "failed"); }),
+      near: (d.near || []).map(function (n) { return Object.assign({ status: "near", quarter: fq }, n); }),
+      earlier: sig.filter(function (s) { return s.status === "confirmed" && s.quarter !== cq && s.quarter !== fq; })
+    };
+  }
+  // the close the forming quarter needs: close_t vs EMA_{t-1} decides the cross
+  function keyLevel(sym) {
+    var s = S.data.series[sym]; if (!s || !s.q.length) return null;
+    var last = s.q.length - 1;
+    if (s.q[last] !== S.data.forming_quarter || last < 1) return null;
+    return s.e[last - 1];
+  }
+
+  // ---------- header, banner, clock
+  function renderTop() {
+    var d = S.data, today = istToday();
+    var age = Math.round((d8(today) - d8(d.as_of)) / DAY);
+    var pill = d.sample ? '<span class="pill sample">Sample data</span>'
+      : age > 4 ? '<span class="pill stale">Last data ' + age + ' days old</span>'
+      : '<span class="pill ok">Up to date</span>';
+    var gen = d.generated_at ? fdate(d.generated_at.slice(0, 10)) + ", " + d.generated_at.slice(11, 16) + " IST" : "";
+    $("fresh").innerHTML = pill + '<span>NSE close of <b class="num">' + fdate(d.as_of, true) + '</b></span>' +
+      (gen ? '<span>Published ' + esc(gen) + '</span>' : "");
+    if (d.sample) {
+      $("banner").hidden = false;
+      $("banner").innerHTML = "<b>Sample data.</b> These DEMO stocks are made up to show how the screener reads. Live NSE results replace them after the first daily run is published.";
+    }
+    var fq = d.forming_quarter, st = qStart(fq), en = qEnd(fq), asof = d8(d.as_of);
+    var total = (en - st) / DAY + 1, done = Math.min(total, Math.max(0, (asof - st) / DAY + 1));
+    var left = Math.max(0, Math.round((en - asof) / DAY));
+    var mo = qMonths(fq);
+    $("clock").innerHTML =
+      '<div class="clock-head">' + qLabel(fq) + ' is forming<small>' + mo[0] + "–" + mo[2] + " " + qy(fq) + '</small></div>' +
+      '<div class="clock-left"><b class="num">' + left + '</b>days of repaint window left</div>' +
+      '<div class="track" role="img" aria-label="' + Math.round(done) + ' of ' + total + ' days of ' + qLabel(fq) + ' elapsed">' +
+      '<div class="fill" style="width:' + (done / total * 100).toFixed(2) + '%"></div>' +
+      mo.map(function (m) { return '<div class="mo">' + m + '</div>'; }).join("") + '</div>' +
+      '<div class="clock-foot"><span>Provisional crosses can still change until <b>' + fdate(iso(en), true) + '</b>, 15:30 IST.</span>' +
+      '<span>Last confirmed close: <b>' + (d.completed_quarter ? qLabel(d.completed_quarter) : "–") + '</b></span></div>';
+  }
+
+  function dirSplit(list) {
+    var u = 0, n = 0; list.forEach(function (s) { if (s.direction === "bullish") u++; else n++; });
+    return '<span class="up">▲ ' + u + '</span> · <span class="dn">▼ ' + n + '</span>';
+  }
+  function renderCounts() {
+    var g = groups(), d = S.data;
+    var defs = (S.hasSetups ? [["setups", "Buy setups", g.setups.length, "quarter, week and day agree"]] : []).concat([
+      ["confirmed", "Confirmed", g.confirmed.length, dirSplit(g.confirmed) + " at " + (d.completed_quarter ? qShort(d.completed_quarter) : "–") + " close"],
+      ["provisional", "Provisional", g.provisional.length, dirSplit(g.provisional) + " in " + qShort(d.forming_quarter)],
+      ["repainted", "Repainted", g.repainted.length, g.repainted.filter(function (s) { return s.status === "failed"; }).length + " failed at the close"],
+      ["near", "Near the EMA", g.near.length, "within " + d.near_pct + "%"],
+      ["earlier", "Earlier quarters", g.earlier.length, "confirmed crosses"]
+    ]);
+    $("counts").style.setProperty("--n", defs.length);
+    $("counts").classList.toggle("odd", defs.length % 2 === 1);
+    $("counts").innerHTML = defs.map(function (x) {
+      return '<button class="count" role="tab" id="tab-' + x[0] + '" aria-selected="' + (S.tab === x[0]) + '" data-tab="' + x[0] + '">' +
+        '<span class="lab">' + x[1] + '</span><span class="big num">' + x[2] + '</span><span class="sub">' + x[3] + '</span></button>';
+    }).join("");
+  }
+
+  // ---------- list
+  var COPY = {
+    setups: function (d) {
+      var r = d.strategy || {}, ser = r.series || [];
+      return ["Buy setups", "Confirmed bullish at the " + qLabel(d.completed_quarter) + " close and still above its exit level, with the weekly and daily closes above their 18 EMAs. " +
+        "The daily cross up is at most " + r.daily_cross_within + " sessions old and the close no more than " + r.max_above_daily_ema_pct + "% above the 18-day EMA. " +
+        (ser.length ? ser.join("/") + " series only, " : "Any series, ") + "₹" + r.min_turnover_cr + " crore or more traded a day."];
+    },
+    confirmed: function (d) { return ["Confirmed at the " + qLabel(d.completed_quarter) + " close", "The quarter ended " + fdate(iso(qEnd(d.completed_quarter)), true) + " with the cross. These no longer change."]; },
+    provisional: function (d) { return ["Provisional in " + qLabel(d.forming_quarter), "Crossing at the latest close. Each needs the quarter to close beyond the level shown to become confirmed."]; },
+    repainted: function (d) { return ["Repainted and failed", "Provisional crosses that the price undid during " + qLabel(d.forming_quarter) + ", and ones the " + qLabel(d.completed_quarter) + " close undid."]; },
+    near: function (d) { return ["Near the EMA", "Within " + d.near_pct + "% of the EMA, on the side that could cross before " + fdate(iso(qEnd(d.forming_quarter))) + "."]; },
+    earlier: function () { return ["Earlier quarters", "Confirmed crosses from previous quarter closes, with where each stock stands today."]; }
+  };
+
+  function chip(s) {
+    var arrow = s.direction === "bullish" ? "▲" : "▼", dir = s.direction === "bullish" ? "Bullish" : "Bearish";
+    if (s.status === "setup") return '<span class="chip setup">▲ Setup</span>';
+    if (s.status === "confirmed") return '<span class="chip c-' + s.direction + '">' + arrow + " " + dir + '</span>';
+    if (s.status === "provisional") return '<span class="chip p-' + s.direction + '">' + arrow + " " + dir + '?</span>';
+    if (s.status === "near") return '<span class="chip watch">' + arrow + ' Watch</span>';
+    return '<span class="chip gone">' + arrow + " " + dir + '</span>';
+  }
+  function statusLine(s) {
+    if (s.status === "setup") return "daily cross " + (s.d.cross_day ? fdate(s.d.cross_day) : s.d.days_ago === 0 ? "today" : s.d.days_ago === 1 ? "1 day ago" : s.d.days_ago + " days ago") +
+      " · ₹" + (s.turnover_cr >= 10 ? Math.round(s.turnover_cr) : s.turnover_cr.toFixed(1)) + " cr/day";
+    if (s.status === "provisional") return "since " + fdate(s.first_seen) + (s.flips ? " · came back " + s.flips + "×" : "");
+    if (s.status === "repainted") return "repainted " + fdate(s.updated);
+    if (s.status === "failed") return "failed at the " + qShort(s.quarter) + " close";
+    if (s.status === "confirmed") return qShort(s.quarter) + " close" + (s.first_seen && s.first_seen.slice(0, 10) < iso(qEnd(s.quarter)) ? " · first seen " + fdate(s.first_seen) : "");
+    return s.name || "";
+  }
+  function levelCell(s) {
+    var lv = keyLevel(s.symbol), up = s.direction === "bullish";
+    if (s.status === "setup") return 'Stop <span class="num">' + rs(s.stop) + '</span><br>risk <span class="num">' + s.risk_pct.toFixed(1) + '%</span>' +
+      (s.max_buy ? '<br>buy ≤ <span class="num">' + rs(s.max_buy) + '</span>' : '');
+    if (s.status === "confirmed" || s.status === "failed") {
+      return 'Closed <span class="num">' + rs(s.cross_close) + '</span><br>vs EMA <span class="num">' + rs(s.cross_ema) + '</span>';
+    }
+    if (lv == null) return "";
+    var verb = s.status === "provisional" ? "Holds if" : s.status === "repainted" ? "Back on if" : "Crosses if";
+    return verb + " " + qShort(S.data.forming_quarter) + " closes " + (up ? "above" : "below") + '<br><span class="num">' + rs(lv) + '</span>';
+  }
+  function distCell(s) {
+    var v = s.dist, w = Math.min(50, Math.abs(v) / 15 * 50);
+    return '<div class="dist"><div class="dbar"><i class="' + (v >= 0 ? "above" : "below") + '" style="width:' + w.toFixed(1) + '%"></i></div><span class="num">' + pctf(v) + '</span></div>';
+  }
+  function wkCell(s) {
+    var w = s.w;
+    if (!w) return '<span class="wk none">No weekly data yet</span>';
+    var ag = agrees(s.direction, w), fresh = w.weeks_ago != null && w.weeks_ago <= 2;
+    var cross = w.weeks_ago == null ? "" : " · " + (fresh ? '<span class="new">' : "") + "crossed " +
+      (w.cross === "bullish" ? "up " : "down ") + weeksAgo(w.weeks_ago) + (fresh ? "</span>" : "");
+    return '<span class="wk ' + (ag ? "yes" : "no") + '"><b>' + (ag ? "✓ Agrees" : "✗ Against") + '</b>' +
+      '<small>' + (w.side === "above" ? "Above " : "Below ") + pctf(w.dist) + cross + '</small></span>';
+  }
+  function spark(sym, qMark) {
+    var s = S.data.series[sym]; if (!s) return "";
+    var W = 120, H = 34, P = 3, n = s.c.length, vals = s.c.concat(s.e.filter(function (x) { return x != null; }));
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), sp = (hi - lo) || 1;
+    var x = function (i) { return P + i * (W - 2 * P) / Math.max(1, n - 1); };
+    var y = function (v) { return H - P - (v - lo) / sp * (H - 2 * P); };
+    var pc = s.c.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }).join("");
+    var pe = "", started = false;
+    s.e.forEach(function (v, i) { if (v == null) return; pe += (started ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); started = true; });
+    var mi = qMark ? s.q.indexOf(qMark) : -1, mark = "";
+    if (mi >= 0) mark = '<rect class="xmark" x="' + (x(mi) - 4).toFixed(1) + '" y="0" width="8" height="' + H + '" rx="2"/>';
+    var li = n - 1, form = s.q[li] === S.data.forming_quarter;
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" aria-hidden="true">' + mark +
+      '<path class="ln-e" d="' + pe + '"/><path class="ln-c" d="' + pc + '"/>' +
+      '<circle class="' + (form ? "pt-form" : "pt-done") + '" cx="' + x(li).toFixed(1) + '" cy="' + y(s.c[li]).toFixed(1) + '" r="3"/></svg>';
+  }
+
+  function visible() {
+    var list = groups()[S.tab].slice(), q = S.q.trim().toUpperCase();
+    if (S.dir !== "all") list = list.filter(function (s) { return s.direction === S.dir; });
+    if (S.hasW && S.wk !== "any") list = list.filter(function (s) { return agrees(s.direction, s.w) === (S.wk === "yes"); });
+    if (q) list = list.filter(function (s) { return s.symbol.indexOf(q) >= 0 || (s.name || "").toUpperCase().indexOf(q) >= 0; });
+    list.sort(function (a, b) {
+      if (S.sort === "sym") return a.symbol < b.symbol ? -1 : 1;
+      if (S.sort === "move") return Math.abs(b.dist) - Math.abs(a.dist);
+      if (S.tab === "earlier" && a.quarter !== b.quarter) return a.quarter < b.quarter ? 1 : -1;
+      return Math.abs(a.dist) - Math.abs(b.dist);
+    });
+    return list;
+  }
+
+  function wkSummary(list) {
+    if (!S.hasW) return "";
+    var checked = list.filter(function (s) { return s.w; });
+    if (!checked.length) return "";
+    var ag = checked.filter(function (s) { return agrees(s.direction, s.w); }).length;
+    return '<p class="wk-sum">Weekly EMA18 agrees on <b class="num">' + ag + '</b> of ' + checked.length + '.</p>';
+  }
+  // how many stocks each buy rule leaves, so an empty or short list explains itself
+  function funnelLine() {
+    var f = S.data.setup_funnel, r = S.data.strategy || {};
+    if (!f) return "";
+    var steps = [[f.confirmed_bullish, "confirmed bullish"], [f.above_exit_level, "above exit level"], [f.weekly_agrees, "weekly agrees"],
+      [f.fresh_daily_cross, "fresh daily cross"], [f.series_ok, (r.series && r.series.length ? r.series.join("/") : "any") + " series"],
+      [f.liquid, "₹" + r.min_turnover_cr + " cr+ a day"]];
+    return '<p class="funnel">' + steps.map(function (x) { return '<span><b class="num">' + x[0] + '</b> ' + esc(x[1]) + '</span>'; }).join('<i aria-hidden="true">›</i>') + '</p>';
+  }
+  function renderList() {
+    var d = S.data, c = COPY[S.tab](d), rows = visible(), group = groups()[S.tab], all = group.length;
+    var html = '<div class="list-head"><div><h2>' + esc(c[0]) + '</h2><p>' + esc(c[1]) + '</p>' + (S.tab === "setups" ? funnelLine() : wkSummary(group)) + '</div><div class="tools">' +
+      '<div class="seg" role="group" aria-label="Direction">' +
+      [["all", "All"], ["bullish", "▲ Bullish"], ["bearish", "▼ Bearish"]].map(function (o) {
+        return '<button data-dir="' + o[0] + '" aria-pressed="' + (S.dir === o[0]) + '">' + o[1] + '</button>'; }).join("") + '</div>' +
+      (S.hasW ? '<div class="seg" role="group" aria-label="Weekly EMA18">' +
+        [["any", "Weekly: any"], ["yes", "✓ Agrees"], ["no", "✗ Against"]].map(function (o) {
+          return '<button data-wk="' + o[0] + '" aria-pressed="' + (S.wk === o[0]) + '">' + o[1] + '</button>'; }).join("") + '</div>' : "") +
+      '<input id="search" type="search" placeholder="Find a symbol" aria-label="Find a symbol" value="' + esc(S.q) + '">' +
+      '<select id="sort" aria-label="Sort"><option value="dist"' + (S.sort === "dist" ? " selected" : "") + '>Closest to EMA</option>' +
+      '<option value="move"' + (S.sort === "move" ? " selected" : "") + '>Furthest from EMA</option>' +
+      '<option value="sym"' + (S.sort === "sym" ? " selected" : "") + '>Symbol A–Z</option></select></div></div>';
+    if (!rows.length) {
+      html += '<div class="empty"><b>' + (all ? "No stocks match these filters." : "Nothing here this time.") + '</b>' +
+        (all ? "Clear the search, or set the direction and weekly filters back to All and any." : emptyCopy()) + '</div>';
+    } else {
+      html += '<div class="row-h" aria-hidden="true"><span>Stock</span><span>Signal</span><span class="r">Close · EMA18</span><span>From EMA</span><span class="h-wk">Weekly EMA18</span><span>Key level</span><span class="h-spark">16 quarters</span></div><div class="rows">';
+      var lastQ = null;
+      rows.forEach(function (s) {
+        if (S.tab === "earlier" && S.sort === "dist" && s.quarter !== lastQ) {
+          lastQ = s.quarter;
+          html += '<div class="row-h" style="display:block;border-top:1px solid var(--line)">' + qLabel(s.quarter) + ' close</div>';
+        }
+        var key = s.symbol + "|" + s.quarter + "|" + s.status;
+        html += '<button class="row" data-key="' + esc(key) + '" aria-current="' + (S.sel === key) + '">' +
+          '<span class="sym c-sym"><b>' + esc(s.symbol) + '</b><span>' + esc(statusLine(s)) + '</span></span>' +
+          '<span class="c-chip">' + chip(s) + '</span>' +
+          '<span class="num r px c-px">' + rs(s.close) + '<small>EMA ' + rs(s.ema) + '</small></span>' +
+          '<span class="c-dist">' + distCell(s) + '</span>' +
+          '<span class="c-wk">' + wkCell(s) + '</span>' +
+          '<span class="level c-level">' + levelCell(s) + '</span>' +
+          '<span class="c-spark">' + spark(s.symbol, s.status === "near" ? null : s.quarter) + '</span></button>';
+      });
+      html += '</div>';
+    }
+    $("list").innerHTML = html;
+  }
+  function emptyCopy() {
+    var d = S.data;
+    return {
+      setups: "No stock meets every buy rule at this close. Setups appear when a confirmed stock's daily close crosses back above its 18-day EMA.",
+      confirmed: "No stock crossed its EMA18 at the " + (d.completed_quarter ? qLabel(d.completed_quarter) : "last") + " close.",
+      provisional: "No stock is crossing in " + qLabel(d.forming_quarter) + " at the latest close.",
+      repainted: "No provisional cross has been undone this quarter.",
+      near: "No stock is within " + d.near_pct + "% of its EMA on the crossing side.",
+      earlier: "Earlier confirmed crosses appear here once the screener has run through a quarter close."
+    }[S.tab];
+  }
+
+  // ---------- detail
+  function findItem(key) {
+    var g = groups(), all = [].concat(g.setups, g.confirmed, g.provisional, g.repainted, g.near, g.earlier);
+    for (var i = 0; i < all.length; i++) if (all[i].symbol + "|" + all[i].quarter + "|" + all[i].status === key) return all[i];
+    return null;
+  }
+  function niceTicks(lo, hi, n) {
+    var span = hi - lo, step = Math.pow(10, Math.floor(Math.log10(span / n))), err = span / n / step;
+    step *= err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1;
+    var t = [], v = Math.ceil(lo / step) * step;
+    for (; v <= hi + 1e-9; v += step) t.push(+v.toFixed(6));
+    return t;
+  }
+  // o: {c, e, labels, every, forming (last point still forming), level, mark (index), dot, aria}
+  function bigChart(o) {
+    var W = 368, H = 210, L = 56, R = 10, T = 12, B = 26, n = o.c.length, lv = o.level;
+    var real = function (v) { return v != null; };   // daily closes are null on days a stock didn't trade
+    var vals = o.c.filter(real).concat(o.e.filter(real)); if (lv != null) vals.push(lv);
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), pad = (hi - lo) * 0.08 || hi * 0.05;
+    lo -= pad; hi += pad;
+    var x = function (i) { return L + i * (W - L - R) / Math.max(1, n - 1); };
+    var y = function (v) { return T + (hi - v) / (hi - lo) * (H - T - B); };
+    var g = "";
+    niceTicks(lo, hi, 4).forEach(function (t) {
+      g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t).toFixed(1) + '" y2="' + y(t).toFixed(1) + '"/>' +
+        '<text x="' + (L - 6) + '" y="' + (y(t) + 3.5).toFixed(1) + '" text-anchor="end">' + inr.format(t).replace(/\.00$/, "") + '</text>';
+    });
+    o.labels.forEach(function (lab, i) {
+      if ((n - 1 - i) % o.every === 0) g += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + (i === n - 1 ? "end" : "middle") + '">' + lab + '</text>';
+    });
+    if (o.mark != null && o.mark >= 0) {
+      var mw = Math.max(6, Math.min(16, (W - L - R) / Math.max(1, n - 1) * 0.9));
+      g = '<rect class="xmark" x="' + (x(o.mark) - mw / 2).toFixed(1) + '" y="' + T + '" width="' + mw.toFixed(1) + '" height="' + (H - T - B) + '" rx="3"/>' + g;
+    }
+    if (lv != null) g += '<line class="lvl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(lv).toFixed(1) + '" y2="' + y(lv).toFixed(1) + '"/>' +
+      '<text class="lvl-t" x="' + (L + 4) + '" y="' + (y(lv) - 5).toFixed(1) + '">key level ' + inr.format(lv) + '</text>';
+    function line(arr) {
+      var p = "", st = false;
+      arr.forEach(function (v, i) { if (v == null) return; p += (st ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); st = true; });
+      return p;
+    }
+    var pc = line(o.c), pe = line(o.e);
+    var pts = o.dot ? o.c.map(function (v, i) {
+      if (v == null) return "";
+      var form = i === n - 1 && o.forming;
+      return '<circle class="' + (form ? "pt-form" : "pt-done") + '" cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="' + (form ? 4 : o.dot) + '"/>';
+    }).join("") : "";
+    if (!o.dot) {   // dense daily chart: no dots, just the latest close
+      for (var li = n - 1; li >= 0 && o.c[li] == null; li--);
+      if (li >= 0) pts = '<circle class="pt-done" cx="' + x(li).toFixed(1) + '" cy="' + y(o.c[li]).toFixed(1) + '" r="3"/>';
+    }
+    return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(o.aria) + '">' + g +
+      '<path class="ln-e" d="' + pe + '"/><path class="ln-c" d="' + pc + '"/>' + pts + '</svg>';
+  }
+  function weekDates(ws) {
+    var end = isoFriday(ws.end), n = ws.c.length, out = [];
+    for (var i = 0; i < n; i++) out.push(new Date(end.getTime() - (n - 1 - i) * 7 * 86400000));
+    return out;
+  }
+  function weeklyVerdict(it) {
+    var w = it.w;
+    if (!w) return "No weekly data for this stock yet. It loads on the next daily run.";
+    var ag = agrees(it.direction, w);
+    var s = "Weekly: " + (w.side === "above" ? "above" : "below") + " its 18-week EMA (" + rs(w.ema) + ") by " + Math.abs(w.dist).toFixed(1) + "%";
+    if (w.weeks_ago != null) s += ", crossed " + (w.cross === "bullish" ? "up " : "down ") + weeksAgo(w.weeks_ago);
+    s += ". " + (ag ? "<b>Agrees</b> with the " : "<b>Goes against</b> the ") + (it.status === "near" ? "possible " : "") + it.direction + " quarterly signal.";
+    if (w.forming) s += " This week's candle is still forming (latest close " + fdate(w.as_of) + ").";
+    return s;
+  }
+  function daysAgo(n) { return n === 0 ? "today" : n === 1 ? "1 trading day ago" : n + " trading days ago"; }
+  function dailyVerdict(it) {
+    var d = it.d;
+    if (!d) return "No daily data for this stock yet. It loads on the next daily run.";
+    var ag = agrees(it.direction, d);
+    var s = "Daily" + (d.as_of ? ", at the " + fdate(d.as_of) + " close" : "") + ": " + (d.side === "above" ? "above" : "below") +
+      " its 18-day EMA (" + rs(d.ema) + ") by " + Math.abs(d.dist).toFixed(1) + "%";
+    if (d.days_ago != null) s += ", crossed " + (d.cross === "bullish" ? "up " : "down ") + (d.cross_day ? "on " + fdate(d.cross_day) : daysAgo(d.days_ago));
+    return s + ". " + (ag ? "<b>Agrees</b> with the " : "<b>Goes against</b> the ") + (it.status === "near" ? "possible " : "") + it.direction + " quarterly signal.";
+  }
+  // TradingView writes NSE tickers with _ for - and & (BAJAJ-AUTO is NSE:BAJAJ_AUTO)
+  function tvLink(sym, chart) {
+    var iv = chart === "d" ? "D" : chart === "w" ? "W" : "3M";
+    return "https://www.tradingview.com/chart/?symbol=" + encodeURIComponent("NSE:" + sym.replace(/[-&]/g, "_")) + "&interval=" + iv;
+  }
+  function verdict(it, lv) {
+    var fq = qLabel(S.data.forming_quarter), up = it.direction === "bullish", side = up ? "above" : "below";
+    var L = lv != null ? "<b>" + rs(lv) + "</b>" : "the EMA";
+    switch (it.status) {
+      case "setup": return "<b>Buy setup.</b> Confirmed bullish at the " + qLabel(it.quarter) + " close, and the week and the day agree. Stop " + rs(it.stop) +
+        ": the higher of its exit level " + rs(it.key) + " and " + ((S.data.strategy || {}).stop_loss_pct || 15) + "% below this close, so " + it.risk_pct.toFixed(1) + "% at risk." +
+        (it.max_buy ? " Pay at most " + rs(it.max_buy) + " with a limit order; if it opens higher, skip the day." : "");
+      case "confirmed": return "<b>Confirmed " + it.direction + "</b> at the " + qLabel(it.quarter) + " close: " + rs(it.cross_close) + " against an EMA18 of " + rs(it.cross_ema) + ".";
+      case "failed": return "<b>Failed.</b> It was crossing " + it.direction + " during " + qLabel(it.quarter) + ", but the quarter closed on the other side of the EMA.";
+      case "provisional": return "<b>Provisional " + it.direction + "</b> since " + fdate(it.first_seen) + ". It becomes confirmed if " + fq + " closes " + side + " " + L + " on " + fdate(iso(qEnd(S.data.forming_quarter)), true) + ".";
+      case "repainted": return "<b>Repainted " + fdate(it.updated) + ".</b> The cross comes back if the price gets " + side + " " + L + " again before the quarter ends.";
+      case "near": return "<b>Watching for a " + it.direction + " cross.</b> " + fq + " has to close " + side + " " + L + ", " + pctf((lv != null ? lv / it.close - 1 : 0) * 100).replace("+", "") + " from the latest close.";
+      default: return "";
+    }
+  }
+  function renderDetail() {
+    var el = $("detail"), it = S.sel && findItem(S.sel);
+    if (!it) { el.hidden = true; $("scrim").hidden = true; $("board").classList.remove("has-detail"); return; }
+    var s = S.data.series[it.symbol] || { q: [], c: [], e: [] };
+    var ws = S.hasW && S.data.weekly ? S.data.weekly[it.symbol] : null;
+    var ds = S.hasD && S.data.daily ? S.data.daily[it.symbol] : null;
+    if ((S.chart === "w" && !ws) || (S.chart === "d" && !ds)) S.chart = "q";
+    var weekly = S.chart === "w" && ws, daily = S.chart === "d" && ds;
+    var lv = it.status === "confirmed" || it.status === "failed" ? null : keyLevel(it.symbol);
+    var chart, legend, head, rows = "";
+    function row(label, c, e, form) {
+      var dv = e ? (c / e - 1) * 100 : null;
+      return '<tr class="' + (form ? "form" : "") + '"><td>' + label + '</td><td>' + inr.format(c) + '</td><td>' + (e ? inr.format(e) : "–") +
+        '</td><td class="' + (dv == null ? "" : dv >= 0 ? "up" : "dn") + '">' + (dv == null ? "–" : pctf(dv)) + '</td></tr>';
+    }
+    if (daily) {
+      var dd = S.data.daily_dates, dn = dd.length;
+      chart = bigChart({ c: ds.c, e: ds.e, every: 18, forming: false, level: null, dot: 0,
+        labels: dd.map(function (k) { return fdate(k); }),
+        mark: it.d && it.d.days_ago != null ? (function () {   // count back trading days this stock traded
+          var left = it.d.days_ago;
+          for (var i = dn - 1; i >= 0; i--) { if (ds.c[i] == null) continue; if (left === 0) return i; left--; }
+          return null; })() : null,
+        aria: "Daily closes and 18-day EMA for " + it.symbol });
+      legend = '<span><i></i>Daily close</span><span><i class="e"></i>18-day EMA</span>';
+      head = "<th>Day</th><th>Close ₹</th><th>EMA18 ₹</th><th>From EMA</th>";
+      for (var m = dn - 1, shown = 0; m >= 0 && shown < 8; m--) {
+        if (ds.c[m] == null) continue;
+        rows += row(fdate(dd[m]), ds.c[m], ds.e[m], false); shown++;
+      }
+    } else if (weekly) {
+      var dates = weekDates(ws), wn = ws.c.length, wform = !!(it.w && it.w.forming);
+      chart = bigChart({ c: ws.c, e: ws.e, every: 5, forming: wform, level: null, dot: 1.8,
+        labels: dates.map(function (d) { return d.getUTCDate() + " " + MON[d.getUTCMonth()]; }),
+        mark: it.w && it.w.weeks_ago != null && it.w.weeks_ago < wn ? wn - 1 - it.w.weeks_ago : null,
+        aria: "Weekly closes and 18-week EMA for " + it.symbol });
+      legend = '<span><i></i>Weekly close</span><span><i class="e"></i>18-week EMA</span>' + (wform ? '<span><i class="f"></i>Forming week</span>' : "");
+      head = "<th>Week to</th><th>Close ₹</th><th>EMA18 ₹</th><th>From EMA</th>";
+      for (var j = wn - 1; j >= Math.max(0, wn - 8); j--) {
+        rows += row(fdate(iso(dates[j])) + (j === wn - 1 && wform ? " (forming)" : ""), ws.c[j], ws.e[j], j === wn - 1 && wform);
+      }
+    } else {
+      chart = s.q.length ? bigChart({ c: s.c, e: s.e, every: s.q.length > 12 ? 4 : 2, level: lv, dot: 2.4,
+        forming: s.q[s.q.length - 1] === S.data.forming_quarter, labels: s.q.map(qShort),
+        mark: it.status === "near" ? null : s.q.indexOf(it.quarter),
+        aria: "Quarterly closes and EMA18 for " + it.symbol }) : "";
+      legend = '<span><i></i>Quarterly close</span><span><i class="e"></i>EMA18</span><span><i class="f"></i>Forming quarter</span>';
+      head = "<th>Quarter</th><th>Close ₹</th><th>EMA18 ₹</th><th>From EMA</th>";
+      for (var i = s.q.length - 1; i >= Math.max(0, s.q.length - 8); i--) {
+        var form = s.q[i] === S.data.forming_quarter;
+        rows += row(qLabel(s.q[i]) + (form ? " (forming)" : ""), s.c[i], s.e[i], form);
+      }
+    }
+    var tabs = [["q", "Quarterly"]].concat(ws ? [["w", "Weekly"]] : [], ds ? [["d", "Daily"]] : []);
+    el.innerHTML = '<div class="detail-h"><div><h3>' + esc(it.symbol) + '</h3><p>' + esc(it.name || "") + ' · NSE · ' + chip(it) + '</p>' +
+      '<a class="tv" href="' + tvLink(it.symbol, S.chart) + '" target="_blank" rel="noopener">Open ' +
+      (S.chart === "d" ? "daily" : S.chart === "w" ? "weekly" : "quarterly") + ' chart in TradingView ↗</a></div>' +
+      '<button class="x" id="close" aria-label="Close detail">×</button></div>' +
+      '<div class="verdict">' + verdict(it, lv) + (S.hasW ? '<span class="wv">' + weeklyVerdict(it) + '</span>' : "") +
+      (S.hasD ? '<span class="wv">' + dailyVerdict(it) + '</span>' : "") + '</div>' +
+      (tabs.length > 1 ? '<div class="seg chart-seg" role="group" aria-label="Chart">' + tabs.map(function (o) {
+        return '<button data-chart="' + o[0] + '" aria-pressed="' + (S.chart === o[0]) + '">' + o[1] + '</button>'; }).join("") + '</div>' : "") +
+      chart + '<div class="legend">' + legend + '</div>' +
+      '<table class="qt"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    el.hidden = false;
+    $("board").classList.add("has-detail");
+    $("scrim").hidden = window.matchMedia("(min-width: 1280px)").matches;
+  }
+
+  function render() { renderCounts(); renderList(); renderDetail(); }
+
+  // ---------- events
+  function setTab(t, fromHash) {
+    if (TABS.indexOf(t) < 0 || (t === "setups" && !S.hasSetups)) t = "confirmed";
+    S.tab = t; S.sel = null;
+    if (!fromHash && location.hash !== "#" + t) { try { history.replaceState(null, "", "#" + t); } catch (e) { location.hash = t; } }
+    render();
+  }
+  $("counts").addEventListener("click", function (e) { var b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
+  $("list").addEventListener("click", function (e) {
+    var d = e.target.closest("[data-dir]"); if (d) { S.dir = d.dataset.dir; renderList(); return; }
+    var k = e.target.closest("[data-wk]"); if (k) { S.wk = k.dataset.wk; renderList(); return; }
+    var r = e.target.closest(".row"); if (r) { S.sel = S.sel === r.dataset.key ? null : r.dataset.key; renderList(); renderDetail(); }
+  });
+  $("list").addEventListener("input", function (e) {
+    if (e.target.id === "search") {
+      S.q = e.target.value; var pos = e.target.selectionStart; renderList();
+      var i = $("search"); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) {} }
+    }
+  });
+  $("list").addEventListener("change", function (e) { if (e.target.id === "sort") { S.sort = e.target.value; renderList(); } });
+  function closeDetail() { S.sel = null; renderList(); renderDetail(); }
+  $("detail").addEventListener("click", function (e) {
+    if (e.target.closest("#close")) { closeDetail(); return; }
+    var c = e.target.closest("[data-chart]"); if (c) { S.chart = c.dataset.chart; renderDetail(); }
+  });
+  $("scrim").addEventListener("click", closeDetail);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && S.sel) closeDetail(); });
+  window.addEventListener("hashchange", function () { setTab(location.hash.slice(1), true); });
+  window.addEventListener("resize", function () { if (S.sel) $("scrim").hidden = window.matchMedia("(min-width: 1280px)").matches; });
+
+  // ---------- load
+  var timer = setTimeout(function () { if (!S.data) fail("The data is taking longer than usual. Reload the page to try again."); }, 12000);
+  function fail(msg) { $("list").innerHTML = '<div class="empty"><b>Couldn’t load the screener data.</b>' + esc(msg) + '</div>'; }
+  fetch("data/signals.json", { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("The data file returned " + r.status + ".");
+    return r.json();
+  }).then(function (d) {
+    clearTimeout(timer);
+    S.data = d; d.series = d.series || {};
+    S.hasW = !!d.weekly_ema_period;          // files from before the weekly check have none
+    S.hasD = !!(d.daily_ema_period && d.daily_dates && d.daily_dates.length);
+    $("board").classList.toggle("no-weekly", !S.hasW);
+    var h = location.hash.slice(1);
+    S.hasSetups = Array.isArray(d.setups);   // files from before the strategy have none
+    if (h === "setups" && !S.hasSetups) h = "";
+    S.tab = TABS.indexOf(h) >= 0 ? h : (S.hasSetups && d.setups.length ? "setups" : groups().confirmed.length ? "confirmed" : "provisional");
+    if (d.strategy) {
+      var r = d.strategy;
+      $("strategy-copy").textContent = "A setup needs the quarter, the week and the day to agree. Its stop is the higher of the stock's exit level (the EMA18 of its last completed quarter) and " +
+        r.stop_loss_pct + "% below the close. A holding is sold on a close below its exit level, a close " + r.stop_loss_pct + "% below the buy price" +
+        (r.trail_after_gain_pct != null ? ", or, once it has been up " + r.trail_after_gain_pct + "%, a week closing below its 18-week EMA" : "") +
+        "." + (r.max_buy_above_close_pct != null ? " Buy with a limit order at most " + r.max_buy_above_close_pct + "% above the setup's close." : "") +
+        " Holdings and their sell alerts are private and never appear on this page.";
+      $("strategy-note").hidden = false;
+    }
+    renderTop(); render();
+  }).catch(function (err) { clearTimeout(timer); fail(err.message + " Reload the page; if it keeps happening, the latest run hasn't been published yet."); });
+})();
+</script>
